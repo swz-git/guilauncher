@@ -2,6 +2,10 @@
 name = "rlbotguilauncher"
 version = "0.1.0"
 edition = "2021"
+description = "RLBotGui Launcher"
+license-file = "LICENSE"
+repository = "https://github.com/swz-git/guilauncher"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
