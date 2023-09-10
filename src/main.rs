@@ -4,10 +4,11 @@ extern crate log;
 use console::Term;
 use directories::BaseDirs;
 use env_logger::Env;
+use octocrab::models::repos::Release;
 use std::{
     env,
     error::Error,
-    io::{stdout, Cursor, Write},
+    io::{stdout, Cursor, Read, Write},
     net::TcpStream,
     path::Path,
     process::Stdio,
@@ -15,7 +16,10 @@ use std::{
 use tokio::{fs, process::Command};
 use yansi::Paint;
 
-const PYTHON37ZIP: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
+const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
+
+const RELEASE_REPO_OWNER: &str = "swz-git";
+const RELEASE_REPO_NAME: &str = "guilauncher";
 
 fn is_online() -> bool {
     match TcpStream::connect("google.com:80") {
@@ -37,6 +41,60 @@ async fn run_bat(s: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn pause() {
+    print!("Press any key to exit... ");
+    stdout().flush().expect("couldn't flush stdout");
+
+    let term = Term::stdout();
+    term.read_key().expect("failed to read key");
+}
+
+// TODO: Check checksum
+async fn self_update(new_release: Release) -> Result<(), Box<dyn Error>> {
+    let zip_asset = new_release
+        .assets
+        .iter()
+        .find(|r| r.name.contains("guilauncher") && r.name.ends_with(".zip"))
+        .expect("Couldn't find binary of latest release");
+
+    info!("Downloading latest release zip");
+
+    let zip_bytes = reqwest::get(zip_asset.browser_download_url.to_string())
+        .await?
+        .bytes()
+        .await?;
+
+    info!("Extracting executable");
+    let mut zip = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
+
+    let mut maybe_new_binary = None;
+
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        if file.name().ends_with("exe") {
+            let mut buf: Vec<u8> = vec![];
+            file.read_to_end(&mut buf)?;
+            maybe_new_binary = Some(buf);
+
+            break;
+        }
+    }
+
+    if let Some(new_binary) = maybe_new_binary {
+        info!("Updating self");
+        let temp_bin = Path::join(env::temp_dir().as_path(), "TEMPrlbotguilauncher.exe");
+        fs::write(&temp_bin, new_binary).await?;
+        self_replace::self_replace(&temp_bin)?;
+        fs::remove_file(temp_bin).await?;
+        info!("Done! Please restart this program.");
+        pause();
+    } else {
+        Err("Couldn't find new binary in zip")?
+    }
+
+    Ok(())
+}
+
 async fn realmain() -> Result<(), Box<dyn Error>> {
     let rlbot_banner = include_str!("../assets/rlbot-banner.txt");
     println!("{}\n", rlbot_banner.green());
@@ -44,10 +102,32 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     let is_online = is_online();
 
-    info!("Online status: {is_online}");
+    info!("Is online: {is_online}");
 
     // Check for self update
-    // TODO
+    // TODO: add clap flag for forced self-update
+    if is_online {
+        info!("Checking for self-updates...");
+
+        let crab = octocrab::instance();
+        let repo = crab.repos(RELEASE_REPO_OWNER, RELEASE_REPO_NAME);
+
+        let current_version_name = env!("CARGO_PKG_VERSION");
+        let latest_release = repo.releases().get_latest().await?;
+
+        if let Some(latest_version_name) = &latest_release.name {
+            if current_version_name != latest_version_name {
+                info!("Update found, self-updating...");
+                return self_update(latest_release).await;
+            } else {
+                info!("Already using latest version!")
+            }
+        } else {
+            warn!("Couldn't find latest release, self-updating is not available")
+        }
+    } else {
+        warn!("Not checking for updates because no internet connection was found")
+    }
 
     let base_dirs = BaseDirs::new().ok_or("Couldn't get BaseDirs")?;
 
@@ -64,9 +144,11 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         if !is_online {
             Err("RLBot needs python to function and can't download it since you're offline. Please connect to the internet and try again.")?
         }
-        let zip = reqwest::get(PYTHON37ZIP).await?.bytes().await?;
+        let zip = reqwest::get(PYTHON37_ZIP_URL).await?.bytes().await?;
         zip_extract::extract(Cursor::new(zip), &python_install_dir, true)?;
         info!("Python installed")
+    } else {
+        info!("Python install found, continuing")
     }
 
     let rlbot_python = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37/python.exe");
@@ -83,6 +165,8 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
             .status()
             .await?;
         info!("Virtual environment created")
+    } else {
+        info!("RLBot virtual python environment found, continuing")
     }
 
     if is_online {
@@ -121,11 +205,7 @@ async fn main() {
         Ok(_) => {}
         Err(e) => {
             error!("{}", e.to_string());
-            print!("Press any key to exit... ");
-            stdout().flush().expect("couldn't flush stdout");
-
-            let term = Term::stdout();
-            term.read_key().expect("failed to read key");
+            pause();
         }
     }
 }
