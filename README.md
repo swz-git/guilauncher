@@ -6,4 +6,4 @@ Experimental hobby RLBotGUI launcher
 
 * [X] Fix "Ping command not found" [issue](https://discord.com/channels/348658686962696195/1076612216385708142)
 * [X] Local python install with zip
-* [ ] Self-updater
+* [X] Self-updater

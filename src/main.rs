@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use clap::Parser;
 use console::Term;
 use directories::BaseDirs;
 use env_logger::Env;
@@ -95,12 +96,34 @@ async fn self_update(new_release: Release) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Launcher for RLBotGUI
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Force self-update
+    #[arg(short, long, default_value_t = false)]
+    force_self_update: bool,
+
+    /// Reinstall python
+    #[arg(short, long, default_value_t = false)]
+    python_reinstall: bool,
+
+    // Reset venv
+    #[arg(short, long, default_value_t = false)]
+    venv_reset: bool,
+
+    // Run as if offline
+    #[arg(short, long, default_value_t = false)]
+    offline: bool,
+}
+
 async fn realmain() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
     let rlbot_banner = include_str!("../assets/rlbot-banner.txt");
     println!("{}\n", rlbot_banner.green());
     info!("Checking for internet connection...");
 
-    let is_online = is_online();
+    let is_online = is_online() && !args.offline;
 
     info!("Is online: {is_online}");
 
@@ -118,6 +141,9 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         if let Some(latest_version_name) = &latest_release.name {
             if current_version_name != latest_version_name {
                 info!("Update found, self-updating...");
+                return self_update(latest_release).await;
+            } else if args.force_self_update {
+                info!("Forcing self-update...");
                 return self_update(latest_release).await;
             } else {
                 info!("Already using latest version!")
@@ -139,6 +165,12 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     // Check for python install
     let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37");
+
+    if args.python_reinstall && python_install_dir.exists() {
+        info!("Removing current python install...");
+        fs::remove_dir_all(&python_install_dir).await?;
+    }
+
     if !python_install_dir.exists() {
         info!("Python not found, installing...");
         if !is_online {
@@ -156,6 +188,12 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     let venv_activate_path = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/venv");
     let venv_activate_bat = Path::join(Path::new(&venv_activate_path), "Scripts/activate.bat");
     let venv_exists = venv_activate_bat.exists();
+
+    if args.venv_reset && venv_exists {
+        info!("Removing venv directory");
+        fs::remove_dir_all(&venv_activate_path).await?
+    }
+
     if !venv_exists {
         info!("No RLBot virtual python environment found, creating...");
         Command::new(rlbot_python)
