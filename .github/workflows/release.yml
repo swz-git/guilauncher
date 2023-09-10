@@ -1,28 +1,23 @@
-name: Open a release PR
+# .github/workflows/release.yml
+
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Version to release
-        required: true
-        type: string
+  release:
+    types: [created]
 
 jobs:
-  make-release-pr:
-    permissions:
-      id-token: write # Enable OIDC
-      pull-requests: write
-      contents: write
+  release:
+    name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-gnu]
     steps:
-      - uses: actions/checkout@v3
-      - uses: chainguard-dev/actions/setup-gitsign@main
-      - name: Install cargo-release
-        uses: taiki-e/install-action@v1
+      - uses: actions/checkout@master
+      - name: Compile and release
+        uses: rust-build/rust-build.action@v1.4.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: cargo-release
-
-      - uses: cargo-bins/release-pr@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: ${{ inputs.version }}
+          RUSTTARGET: ${{ matrix.target }}
+          EXTRA_FILES: "README.md LICENSE"
