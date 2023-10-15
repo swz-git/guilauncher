@@ -211,7 +211,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         info!("Updating rlbot...");
         let update_commands = [
             "@ECHO OFF",
-            &format!("call {}", venv_activate_bat.as_path().to_str().unwrap()),
+            &format!("call \"{}\"", venv_activate_bat.as_path().to_str().unwrap()),
             "python -m pip install --upgrade pip",
             "pip install wheel",
             "pip install eel",
@@ -225,7 +225,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     info!("Starting GUI");
     let update_commands = [
         "@ECHO OFF",
-        &format!("call {}", venv_activate_bat.to_str().unwrap()),
+        &format!("call \"{}\"", venv_activate_bat.to_str().unwrap()),
         "python -c \"from rlbot_gui import gui; gui.start()\"",
     ];
     run_bat(&update_commands.join("\n")).await?;
