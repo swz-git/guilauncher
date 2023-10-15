@@ -1,6 +1,6 @@
 # GUI launcher
 
-Experimental hobby RLBotGUI launcher
+A RLBotGUI launcher
 
 ## Goals/Improvements over old "launcher"
 
