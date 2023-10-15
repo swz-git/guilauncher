@@ -187,15 +187,41 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     let venv_activate_path = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/venv");
     let venv_activate_bat = Path::join(Path::new(&venv_activate_path), "Scripts/activate.bat");
-    let venv_exists = venv_activate_bat.exists();
+    let mut venv_exists = venv_activate_bat.exists();
 
     if args.venv_reset && venv_exists {
         info!("Removing venv directory");
-        fs::remove_dir_all(&venv_activate_path).await?
+        fs::remove_dir_all(&venv_activate_path).await?;
+        venv_exists = false;
     }
 
     if !venv_exists {
         info!("No RLBot virtual python environment found, creating...");
+
+        info!("Checking for https://github.com/python/cpython/issues/90844");
+        let buggy_log_file = Path::join(
+            base_dirs
+                .home_dir()
+                .parent()
+                .expect("Couldn't find users dir"),
+            base_dirs
+                .home_dir()
+                .file_name()
+                .ok_or("Couldn't get username")?
+                .to_str()
+                .ok_or("Couldn't get username as str")?
+                .split(" ")
+                .collect::<Vec<&str>>()[0],
+        );
+
+        if buggy_log_file.exists() && buggy_log_file.is_file() {
+            info!("Found bug");
+            fs::remove_file(buggy_log_file).await?;
+            info!("Applied temporary fix, continuing")
+        } else {
+            info!("Bug not found, continuing")
+        }
+
         Command::new(rlbot_python)
             .args(["-m", "venv", venv_activate_path.to_str().unwrap()])
             .stdout(Stdio::inherit())
