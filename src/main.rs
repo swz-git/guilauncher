@@ -182,12 +182,12 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         .iter()
         .fold(true, |acc, path| path.exists() && acc);
 
-    if !crucial_python_components_installed {
-        if args.python_reinstall {
-            info!("Removing current python install...");
-            fs::remove_dir_all(&python_install_dir).await?;
-        }
+    if args.python_reinstall {
+        info!("Removing current python install...");
+        fs::remove_dir_all(&python_install_dir).await?;
+    }
 
+    if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
         if !is_online {
             Err("RLBot needs python to function and can't download it since you're offline. Please connect to the internet and try again.")?
