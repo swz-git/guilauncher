@@ -97,7 +97,7 @@ async fn self_update(new_release: Release) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn check_self_update(force_update: bool) -> Result<(), Box<dyn Error>> {
+async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error>> {
     let crab = octocrab::instance();
     let repo = crab.repos(RELEASE_REPO_OWNER, RELEASE_REPO_NAME);
 
@@ -107,10 +107,12 @@ async fn check_self_update(force_update: bool) -> Result<(), Box<dyn Error>> {
     if let Some(latest_version_name) = &latest_release.name {
         if current_version_name != latest_version_name {
             info!("Update found, self-updating...");
-            return self_update(latest_release).await;
+            self_update(latest_release).await?;
+            return Ok(true);
         } else if force_update {
             info!("Forcing self-update...");
-            return self_update(latest_release).await;
+            self_update(latest_release).await?;
+            return Ok(true);
         } else {
             info!("Already using latest version!");
         }
@@ -118,7 +120,7 @@ async fn check_self_update(force_update: bool) -> Result<(), Box<dyn Error>> {
         warn!("Couldn't find latest release, self-updating is not available");
     }
 
-    Ok(())
+    Ok(false)
 }
 
 /// Launcher for RLBotGUI
@@ -152,7 +154,10 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // TODO: add clap flag for forced self-update
     if is_online {
         info!("Checking for self-updates...");
-        return check_self_update(args.force_self_update).await;
+        let self_updated = check_self_update(args.force_self_update).await?;
+        if self_updated {
+            return Ok(());
+        }
     } else {
         warn!("Not checking for updates because no internet connection was found")
     }
