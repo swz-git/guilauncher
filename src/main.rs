@@ -97,6 +97,30 @@ async fn self_update(new_release: Release) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn check_self_update(force_update: bool) -> Result<(), Box<dyn Error>> {
+    let crab = octocrab::instance();
+    let repo = crab.repos(RELEASE_REPO_OWNER, RELEASE_REPO_NAME);
+
+    let current_version_name = env!("CARGO_PKG_VERSION");
+    let latest_release = repo.releases().get_latest().await?;
+
+    if let Some(latest_version_name) = &latest_release.name {
+        if current_version_name != latest_version_name {
+            info!("Update found, self-updating...");
+            return self_update(latest_release).await;
+        } else if force_update {
+            info!("Forcing self-update...");
+            return self_update(latest_release).await;
+        } else {
+            info!("Already using latest version!");
+        }
+    } else {
+        warn!("Couldn't find latest release, self-updating is not available");
+    }
+
+    Ok(())
+}
+
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -128,26 +152,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // TODO: add clap flag for forced self-update
     if is_online {
         info!("Checking for self-updates...");
-
-        let crab = octocrab::instance();
-        let repo = crab.repos(RELEASE_REPO_OWNER, RELEASE_REPO_NAME);
-
-        let current_version_name = env!("CARGO_PKG_VERSION");
-        let latest_release = repo.releases().get_latest().await?;
-
-        if let Some(latest_version_name) = &latest_release.name {
-            if current_version_name != latest_version_name {
-                info!("Update found, self-updating...");
-                return self_update(latest_release).await;
-            } else if args.force_self_update {
-                info!("Forcing self-update...");
-                return self_update(latest_release).await;
-            } else {
-                info!("Already using latest version!")
-            }
-        } else {
-            warn!("Couldn't find latest release, self-updating is not available")
-        }
+        check_self_update(args.force_self_update).await?;
     } else {
         warn!("Not checking for updates because no internet connection was found")
     }
