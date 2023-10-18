@@ -2,8 +2,8 @@
 
 A RLBotGUI launcher
 
-## Goals/Improvements over old "launcher"
+## Improvements over old batch installer
 
-* [X] Fix "Ping command not found" [issue](https://discord.com/channels/348658686962696195/1076612216385708142)
-* [X] Local python install with zip
-* [X] Self-updater
+*  Self-updater
+*  Rust (more reliable, faster)
+*  Probably more anti-virus friendly (no bat2exe)
