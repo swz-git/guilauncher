@@ -152,7 +152,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // TODO: add clap flag for forced self-update
     if is_online {
         info!("Checking for self-updates...");
-        check_self_update(args.force_self_update).await?;
+        return check_self_update(args.force_self_update).await;
     } else {
         warn!("Not checking for updates because no internet connection was found")
     }
