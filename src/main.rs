@@ -17,13 +17,14 @@ use std::{
 use tokio::{fs, process::Command};
 use yansi::Paint;
 
-const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
+// const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
+const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
 
 const RELEASE_REPO_OWNER: &str = "swz-git";
 const RELEASE_REPO_NAME: &str = "guilauncher";
 
 fn is_online() -> bool {
-    match TcpStream::connect("google.com:80") {
+    match TcpStream::connect("pypi.org:80") {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -108,10 +109,6 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     python_reinstall: bool,
 
-    // Reset venv
-    #[arg(short, long, default_value_t = false)]
-    venv_reset: bool,
-
     // Run as if offline
     #[arg(short, long, default_value_t = false)]
     offline: bool,
@@ -164,97 +161,63 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     }
 
     // Check for python install
-    let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37");
-
-    if args.python_reinstall && python_install_dir.exists() {
-        info!("Removing current python install...");
-        fs::remove_dir_all(&python_install_dir).await?;
+    let python37_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37");
+    if python37_install_dir.exists() {
+        info!("Legacy python37 found")
     }
 
-    if !python_install_dir.exists() {
+    let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python311");
+
+    let rlbot_python = python_install_dir.join("python.exe");
+    let rlbot_pip = python_install_dir.join("Scripts/pip.exe");
+
+    let crucial_python_components = vec![&rlbot_python, &rlbot_pip];
+
+    let crucial_python_components_installed = crucial_python_components
+        .iter()
+        .fold(true, |acc, path| path.exists() && acc);
+
+    if !crucial_python_components_installed {
+        if args.python_reinstall {
+            info!("Removing current python install...");
+            fs::remove_dir_all(&python_install_dir).await?;
+        }
+
         info!("Python not found, installing...");
         if !is_online {
             Err("RLBot needs python to function and can't download it since you're offline. Please connect to the internet and try again.")?
         }
-        let zip = reqwest::get(PYTHON37_ZIP_URL).await?.bytes().await?;
+        let zip = reqwest::get(PYTHON311_ZIP_URL).await?.bytes().await?;
         zip_extract::extract(Cursor::new(zip), &python_install_dir, true)?;
         info!("Python installed")
     } else {
         info!("Python install found, continuing")
     }
 
-    let rlbot_python = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37/python.exe");
-
-    let venv_activate_path = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/venv");
-    let venv_activate_bat = Path::join(Path::new(&venv_activate_path), "Scripts/activate.bat");
-    let mut venv_exists = venv_activate_bat.exists();
-
-    if args.venv_reset && venv_exists {
-        info!("Removing venv directory");
-        fs::remove_dir_all(&venv_activate_path).await?;
-        venv_exists = false;
-    }
-
-    if !venv_exists {
-        info!("No RLBot virtual python environment found, creating...");
-
-        info!("Checking for https://github.com/python/cpython/issues/90844");
-        let buggy_log_file = Path::join(
-            base_dirs
-                .home_dir()
-                .parent()
-                .expect("Couldn't find users dir"),
-            base_dirs
-                .home_dir()
-                .file_name()
-                .ok_or("Couldn't get username")?
-                .to_str()
-                .ok_or("Couldn't get username as str")?
-                .split(" ")
-                .collect::<Vec<&str>>()[0],
-        );
-
-        if buggy_log_file.exists() && buggy_log_file.is_file() {
-            info!("Found bug");
-            fs::remove_file(buggy_log_file).await?;
-            info!("Applied temporary fix, continuing")
-        } else {
-            info!("Bug not found, continuing")
-        }
-
-        Command::new(rlbot_python)
-            .args(["-m", "venv", venv_activate_path.to_str().unwrap()])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .await?;
-        info!("Virtual environment created")
-    } else {
-        info!("RLBot virtual python environment found, continuing")
-    }
-
     if is_online {
         info!("Updating rlbot...");
-        let update_commands = [
-            "@ECHO OFF",
-            &format!("call \"{}\"", venv_activate_bat.as_path().to_str().unwrap()),
-            "python -m pip install --upgrade pip",
-            "pip install wheel",
-            "pip install eel",
-            "pip install --upgrade rlbot_gui rlbot",
-        ];
-        run_bat(&update_commands.join("\n")).await?;
+        let update_script = format!(
+            r#"@ECHO OFF
+            {0} -m pip install -U pip --no-warn-script-location
+            {1} install -U setuptools wheel --no-warn-script-location
+            {1} install -U gevent --no-warn-script-location
+            {1} install -U eel --no-warn-script-location
+            {1} install -U rlbot_gui rlbot --no-warn-script-location"#,
+            rlbot_python.to_str().unwrap(),
+            rlbot_pip.to_str().unwrap()
+        );
+        run_bat(&update_script).await?;
     } else {
         warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.")
     }
 
     info!("Starting GUI");
-    let update_commands = [
-        "@ECHO OFF",
-        &format!("call \"{}\"", venv_activate_bat.to_str().unwrap()),
-        "python -c \"from rlbot_gui import gui; gui.start()\"",
-    ];
-    run_bat(&update_commands.join("\n")).await?;
+    let launch_script = format!(
+        r#"@ECHO OFF
+        {0} -c "from rlbot_gui import gui; gui.start()""#,
+        rlbot_python.to_str().unwrap()
+    );
+    run_bat(&launch_script).await?;
 
     Ok(())
 }
