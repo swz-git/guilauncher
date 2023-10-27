@@ -40,3 +40,4 @@ zip-extract = "0.1.2"
 
 [build-dependencies]
 winres = "0.1"
+static_vcruntime = "2.0.0"
