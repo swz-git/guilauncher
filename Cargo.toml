@@ -2,7 +2,7 @@
 name = "rlbotguilauncher"
 version = "0.4.3"
 edition = "2021"
-description = "RLBotGui Launcher"
+description = "RLBotGUI Launcher"
 license-file = "LICENSE"
 repository = "https://github.com/swz-git/guilauncher"
 publish = false
