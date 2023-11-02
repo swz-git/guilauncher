@@ -36,5 +36,5 @@ zip = "0.6.6"
 zip-extract = "0.1.2"
 
 [build-dependencies]
-winres = "0.1"
+embed-resource = "2.4.0"
 static_vcruntime = "2.0.0"

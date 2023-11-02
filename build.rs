@@ -1,10 +1,10 @@
-extern crate winres;
+extern crate embed_resource;
 
 fn main() {
-    static_vcruntime::metabuild();
-    if cfg!(target_os = "windows") {
-        let mut res = winres::WindowsResource::new();
-        res.set_icon("assets/logo.ico");
-        res.compile().unwrap();
+    if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
+        static_vcruntime::metabuild();
+
+        println!("cargo:rerun-if-changed=app-name-manifest.rc");
+        embed_resource::compile("gui-launcher-manifest.rc", embed_resource::NONE)
     }
 }
