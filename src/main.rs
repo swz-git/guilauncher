@@ -1,27 +1,20 @@
-#[macro_use]
-extern crate log;
-
 use clap::Parser;
 use console::Term;
 use directories::BaseDirs;
-use env_logger::Env;
-use octocrab::models::repos::Release;
 use std::{
     env,
     error::Error,
-    io::{stdout, Cursor, Read, Write},
+    io::{stdout, Cursor, Write},
     net::TcpStream,
     path::Path,
     process::Stdio,
 };
 use tokio::{fs, process::Command};
+use tracing::{error, info, warn};
 use yansi::Paint;
 
 // const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
 const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
-
-const RELEASE_REPO_OWNER: &str = "swz-git";
-const RELEASE_REPO_NAME: &str = "guilauncher";
 
 fn is_online() -> bool {
     match TcpStream::connect("pypi.org:80") {
@@ -51,77 +44,8 @@ fn pause() {
     term.read_key().expect("failed to read key");
 }
 
-// TODO: Check checksum
-async fn self_update(new_release: Release) -> Result<(), Box<dyn Error>> {
-    let zip_asset = new_release
-        .assets
-        .iter()
-        .find(|r| r.name.contains("guilauncher") && r.name.ends_with(".zip"))
-        .expect("Couldn't find binary of latest release");
-
-    info!("Downloading latest release zip");
-
-    let zip_bytes = reqwest::get(zip_asset.browser_download_url.to_string())
-        .await?
-        .bytes()
-        .await?;
-
-    info!("Extracting executable");
-    let mut zip = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
-
-    let mut maybe_new_binary = None;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        if file.name().ends_with("exe") {
-            let mut buf: Vec<u8> = vec![];
-            file.read_to_end(&mut buf)?;
-            maybe_new_binary = Some(buf);
-
-            break;
-        }
-    }
-
-    if let Some(new_binary) = maybe_new_binary {
-        info!("Updating self");
-        let temp_bin = Path::join(env::temp_dir().as_path(), "TEMPrlbotguilauncher.exe");
-        fs::write(&temp_bin, new_binary).await?;
-        self_replace::self_replace(&temp_bin)?;
-        fs::remove_file(temp_bin).await?;
-        info!("Done! Please restart this program.");
-        pause();
-    } else {
-        Err("Couldn't find new binary in zip")?
-    }
-
-    Ok(())
-}
-
-async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error>> {
-    let crab = octocrab::instance();
-    let repo = crab.repos(RELEASE_REPO_OWNER, RELEASE_REPO_NAME);
-
-    let current_version_name = env!("CARGO_PKG_VERSION");
-    let latest_release = repo.releases().get_latest().await?;
-
-    if let Some(latest_version_name) = &latest_release.name {
-        if current_version_name != latest_version_name {
-            info!("Update found, self-updating...");
-            self_update(latest_release).await?;
-            return Ok(true);
-        } else if force_update {
-            info!("Forcing self-update...");
-            self_update(latest_release).await?;
-            return Ok(true);
-        } else {
-            info!("Already using latest version!");
-        }
-    } else {
-        warn!("Couldn't find latest release, self-updating is not available");
-    }
-
-    Ok(false)
-}
+mod self_updater;
+use self_updater::*;
 
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
@@ -234,7 +158,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    tracing_subscriber::fmt::init();
     if !cfg!(target_os = "windows") {
         panic!("Only windows is supported")
     }
