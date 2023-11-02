@@ -14,7 +14,8 @@ use tracing::{error, info, warn};
 use yansi::Paint;
 
 // const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
-const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
+// const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
+const PYTHON311_ZIP_DATA: &[u8] = include_bytes!("../assets/python-3.11.6-custom-amd64.zip");
 
 fn is_online() -> bool {
     match TcpStream::connect("pypi.org:80") {
@@ -118,11 +119,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        if !is_online {
-            Err("RLBot needs python to function and can't download it since you're offline. Please connect to the internet and try again.")?
-        }
-        let zip = reqwest::get(PYTHON311_ZIP_URL).await?.bytes().await?;
-        zip_extract::extract(Cursor::new(zip), &python_install_dir, true)?;
+        zip_extract::extract(Cursor::new(PYTHON311_ZIP_DATA), &python_install_dir, true)?;
         info!("Python installed")
     } else {
         info!("Python install found, continuing")
