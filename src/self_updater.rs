@@ -35,7 +35,12 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
     let zip_asset = new_release
         .assets
         .iter()
-        .find(|r| r.name.contains("guilauncher") && r.name.ends_with(".zip"))
+        .find(|r| {
+            r.name.contains("guilauncher")
+                && Path::new(&r.name)
+                    .extension()
+                    .map_or(false, |ext| ext.eq_ignore_ascii_case("zip"))
+        })
         .expect("Couldn't find binary of latest release");
 
     info!("Downloading latest release zip");
@@ -70,7 +75,7 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
         info!("Done! Please restart this program.");
         pause();
     } else {
-        Err("Couldn't find new binary in zip")?
+        Err("Couldn't find new binary in zip")?;
     }
 
     Ok(())
@@ -81,27 +86,21 @@ pub async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error
         "https://api.github.com/repos/{RELEASE_REPO_OWNER}/{RELEASE_REPO_NAME}/releases/latest"
     );
     let reqwest_client = reqwest::Client::new();
-    let req = match reqwest_client
+    let Ok(req) = reqwest_client
         .get(latest_release_url)
         .header(USER_AGENT, "rlbot-gui-launcher")
         .send()
         .await
-    {
-        Ok(x) => x,
-        Err(_) => {
-            warn!("Couldn't find latest release, self-updating is not available");
-            return Ok(false);
-        }
+    else {
+        warn!("Couldn't find latest release, self-updating is not available");
+        return Ok(false);
     };
 
     let req_text = &req.text().await?;
 
-    let latest_release: Release = match serde_json::from_str(req_text) {
-        Ok(x) => x,
-        Err(_) => {
-            warn!("Couldn't parse latest release, self-updating is not available");
-            return Ok(false);
-        }
+    let Ok(latest_release) = serde_json::from_str::<Release>(req_text) else {
+        warn!("Couldn't parse latest release, self-updating is not available");
+        return Ok(false);
     };
 
     let current_version_name = env!("CARGO_PKG_VERSION");
@@ -115,9 +114,8 @@ pub async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error
         info!("Forcing self-update...");
         self_update(&latest_release).await?;
         return Ok(true);
-    } else {
-        info!("Already using latest version!");
     }
 
+    info!("Already using latest version!");
     Ok(false)
 }
