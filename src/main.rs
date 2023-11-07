@@ -1,15 +1,17 @@
+mod self_updater;
+
 use clap::Parser;
 use console::Term;
 use directories::BaseDirs;
+use self_updater::check_self_update;
 use std::{
     env,
     error::Error,
     io::{stdout, Cursor, Write},
-    net::TcpStream,
     path::Path,
     process::Stdio,
 };
-use tokio::{fs, process::Command};
+use tokio::{fs, net::TcpStream, process::Command};
 use tracing::{error, info, warn};
 use yansi::Paint;
 
@@ -17,11 +19,8 @@ use yansi::Paint;
 // const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
 const PYTHON311_ZIP_DATA: &[u8] = include_bytes!("../assets/python-3.11.6-custom-amd64.zip");
 
-fn is_online() -> bool {
-    match TcpStream::connect("pypi.org:80") {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+async fn is_online() -> bool {
+    TcpStream::connect("pypi.org:80").await.is_ok()
 }
 
 async fn run_bat(s: &str) -> Result<(), Box<dyn Error>> {
@@ -44,9 +43,6 @@ fn pause() {
     let term = Term::stdout();
     term.read_key().expect("failed to read key");
 }
-
-mod self_updater;
-use self_updater::*;
 
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
@@ -71,7 +67,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     println!("{}\n", rlbot_banner.green());
     info!("Checking for internet connection...");
 
-    let is_online = is_online() && !args.offline;
+    let is_online = is_online().await && !args.offline;
 
     info!("Is online: {is_online}");
 
@@ -84,7 +80,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
     } else {
-        warn!("Not checking for updates because no internet connection was found")
+        warn!("Not checking for updates because no internet connection was found");
     }
 
     let base_dirs = BaseDirs::new().ok_or("Couldn't get BaseDirs")?;
@@ -98,7 +94,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // Check for python install
     let python37_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python37");
     if python37_install_dir.exists() {
-        info!("Legacy python37 found")
+        info!("Legacy python37 found");
     }
 
     let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python311");
@@ -106,7 +102,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     let rlbot_python = python_install_dir.join("python.exe");
     let rlbot_pip = python_install_dir.join("Scripts/pip.exe");
 
-    let crucial_python_components = vec![&rlbot_python, &rlbot_pip];
+    let crucial_python_components = [&rlbot_python, &rlbot_pip];
 
     let crucial_python_components_installed = crucial_python_components
         .iter()
@@ -120,9 +116,9 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
         zip_extract::extract(Cursor::new(PYTHON311_ZIP_DATA), &python_install_dir, true)?;
-        info!("Python installed")
+        info!("Python installed");
     } else {
-        info!("Python install found, continuing")
+        info!("Python install found, continuing");
     }
 
     if is_online {
@@ -139,7 +135,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         );
         run_bat(&update_script).await?;
     } else {
-        warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.")
+        warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.");
     }
 
     info!("Starting GUI");
@@ -153,17 +149,15 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[cfg(not(windows))]
+compile_error!("Only windows is supported");
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    if !cfg!(target_os = "windows") {
-        panic!("Only windows is supported")
-    }
-    match realmain().await {
-        Ok(_) => {}
-        Err(e) => {
-            error!("{}", e.to_string());
-            pause();
-        }
+
+    if let Err(e) = realmain().await {
+        error!("{}", e.to_string());
+        pause();
     }
 }
