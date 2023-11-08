@@ -9,7 +9,7 @@ use std::{
     error::Error,
     io::{stdout, Cursor, Write},
     path::Path,
-    process::{ExitStatus, Stdio},
+    process::Stdio,
 };
 use tokio::{fs, net::TcpStream, process::Command};
 use tracing::{error, info, warn};
@@ -168,6 +168,7 @@ async fn main() {
 
     if let Err(e) = realmain().await {
         error!("{}", e.to_string());
+        info!("If you need help, join our discord! https://rlbot.org/discord/");
         pause();
     }
 }
