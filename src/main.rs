@@ -5,7 +5,6 @@ use console::Term;
 use directories::BaseDirs;
 use self_updater::check_self_update;
 use std::{
-    env,
     error::Error,
     io::{stdout, Cursor, Write},
     path::Path,
@@ -23,18 +22,16 @@ async fn is_online() -> bool {
     TcpStream::connect("pypi.org:80").await.is_ok()
 }
 
-// TODO: run commands independently instead of running all of them in a batch file
-//       the current solution doesn't catch errors from commands withing the batch file
-async fn run_bat(s: &str) -> Result<(), Box<dyn Error>> {
-    let tmp_file = env::temp_dir().join("rlbotguilaunchertemp.bat");
-    fs::write(&tmp_file, s).await?;
-    Command::new("cmd")
-        .args(["/C", tmp_file.to_str().unwrap()])
+async fn run_command(cmd: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    let exit_status = Command::new(cmd)
+        .args(args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
         .await?;
-
+    if !exit_status.success() {
+        Err("Command failed")?
+    }
     Ok(())
 }
 
@@ -133,28 +130,72 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     if is_online {
         info!("Updating rlbot...");
-        let update_script = format!(
-            r#"@ECHO OFF
-            {0} -m pip install -U pip --no-warn-script-location
-            {1} install -U setuptools wheel --no-warn-script-location
-            {1} install -U gevent --no-warn-script-location
-            {1} install -U eel --no-warn-script-location
-            {1} install -U rlbot_gui rlbot --no-warn-script-location"#,
+        run_command(
             rlbot_python.to_str().unwrap(),
-            rlbot_pip.to_str().unwrap()
-        );
-        run_bat(&update_script).await?;
+            &[
+                "-m",
+                "pip",
+                "install",
+                "-U",
+                "pip",
+                "--no-warn-script-location",
+            ],
+        )
+        .await?;
+        run_command(
+            rlbot_python.to_str().unwrap(),
+            &[
+                "-m",
+                "pip",
+                "install",
+                "-U",
+                "pip",
+                "--no-warn-script-location",
+            ],
+        )
+        .await?;
+        run_command(
+            rlbot_pip.to_str().unwrap(),
+            &[
+                "install",
+                "-U",
+                "setuptools",
+                "wheel",
+                "--no-warn-script-location",
+            ],
+        )
+        .await?;
+        run_command(
+            rlbot_pip.to_str().unwrap(),
+            &["install", "-U", "gevent", "--no-warn-script-location"],
+        )
+        .await?;
+        run_command(
+            rlbot_pip.to_str().unwrap(),
+            &["install", "-U", "eel", "--no-warn-script-location"],
+        )
+        .await?;
+        run_command(
+            rlbot_pip.to_str().unwrap(),
+            &[
+                "install",
+                "-U",
+                "rlbot_gui",
+                "rlbot",
+                "--no-warn-script-location",
+            ],
+        )
+        .await?;
     } else {
         warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.");
     }
 
     info!("Starting GUI");
-    let launch_script = format!(
-        r#"@ECHO OFF
-        {0} -c "from rlbot_gui import gui; gui.start()""#,
-        rlbot_python.to_str().unwrap()
-    );
-    run_bat(&launch_script).await?;
+    run_command(
+        rlbot_python.to_str().unwrap(),
+        &["-c", "from rlbot_gui import gui; gui.start()"],
+    )
+    .await?;
 
     Ok(())
 }
