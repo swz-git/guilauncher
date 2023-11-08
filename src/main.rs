@@ -9,7 +9,7 @@ use std::{
     error::Error,
     io::{stdout, Cursor, Write},
     path::Path,
-    process::Stdio,
+    process::{ExitStatus, Stdio},
 };
 use tokio::{fs, net::TcpStream, process::Command};
 use tracing::{error, info, warn};
@@ -23,6 +23,8 @@ async fn is_online() -> bool {
     TcpStream::connect("pypi.org:80").await.is_ok()
 }
 
+// TODO: run commands independently instead of running all of them in a batch file
+//       the current solution doesn't catch errors from commands withing the batch file
 async fn run_bat(s: &str) -> Result<(), Box<dyn Error>> {
     let tmp_file = env::temp_dir().join("rlbotguilaunchertemp.bat");
     fs::write(&tmp_file, s).await?;
@@ -75,7 +77,15 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // TODO: add clap flag for forced self-update
     if is_online {
         info!("Checking for self-updates...");
-        let self_updated = check_self_update(args.force_self_update).await?;
+        let self_updated = match check_self_update(args.force_self_update).await {
+            Ok(self_updated) => self_updated,
+            Err(e) => {
+                error!("{}", e.to_string());
+                warn!("Self-update failed due to previous error. Skipping self-update and running anyways");
+                false
+            }
+        };
+
         if self_updated {
             return Ok(());
         }
