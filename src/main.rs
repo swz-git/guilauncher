@@ -5,6 +5,7 @@ use console::Term;
 use directories::BaseDirs;
 use self_updater::check_self_update;
 use std::{
+    env,
     error::Error,
     io::{stdout, Cursor, Write},
     path::Path,
@@ -27,6 +28,7 @@ async fn run_command(cmd: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
         .args(args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
+        .current_dir(env::temp_dir())
         .status()
         .await?;
     if !exit_status.success() {
