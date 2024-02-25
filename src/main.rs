@@ -23,20 +23,6 @@ async fn is_online() -> bool {
     TcpStream::connect("pypi.org:80").await.is_ok()
 }
 
-async fn run_command(cmd: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
-    let exit_status = Command::new(cmd)
-        .args(args)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .current_dir(env::temp_dir())
-        .status()
-        .await?;
-    if !exit_status.success() {
-        Err("Command failed")?
-    }
-    Ok(())
-}
-
 fn pause() {
     print!("Press any key to exit... ");
     stdout().flush().expect("couldn't flush stdout");
@@ -130,74 +116,64 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         info!("Python install found, continuing");
     }
 
+    macro_rules! python_command {
+        ($args:expr) => {{
+            let exit_status = Command::new(rlbot_python.to_str().unwrap())
+                .args($args)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .current_dir(env::temp_dir())
+                // The below is needed because uv refuses to run without it
+                .env("VIRTUAL_ENV", python_install_dir.to_str().unwrap())
+                .status()
+                .await?;
+            if !exit_status.success() {
+                Err("Command failed")?
+            }
+        }};
+    }
+
     if is_online {
         info!("Updating rlbot...");
-        run_command(
-            rlbot_python.to_str().unwrap(),
-            &[
-                "-m",
-                "pip",
-                "install",
-                "-U",
-                "pip",
-                "--no-warn-script-location",
-            ],
-        )
-        .await?;
-        run_command(
-            rlbot_python.to_str().unwrap(),
-            &[
-                "-m",
-                "pip",
-                "install",
-                "-U",
-                "pip",
-                "--no-warn-script-location",
-            ],
-        )
-        .await?;
-        run_command(
-            rlbot_pip.to_str().unwrap(),
-            &[
-                "install",
-                "-U",
-                "setuptools",
-                "wheel",
-                "--no-warn-script-location",
-            ],
-        )
-        .await?;
-        run_command(
-            rlbot_pip.to_str().unwrap(),
-            &["install", "-U", "gevent", "--no-warn-script-location"],
-        )
-        .await?;
-        run_command(
-            rlbot_pip.to_str().unwrap(),
-            &["install", "-U", "eel", "--no-warn-script-location"],
-        )
-        .await?;
-        run_command(
-            rlbot_pip.to_str().unwrap(),
-            &[
-                "install",
-                "-U",
-                "rlbot_gui",
-                "rlbot",
-                "--no-warn-script-location",
-            ],
-        )
-        .await?;
+
+        // Make sure pip is up to date
+        python_command!(&[
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "pip",
+            "--no-warn-script-location",
+        ]);
+        // Make sure uv is up to date
+        python_command!(&[
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            "uv",
+            "--no-warn-script-location",
+        ]);
+        // Install rlbot and deps with uv
+        python_command!(&[
+            "-m",
+            "uv",
+            "pip",
+            "install",
+            "-U",
+            "setuptools",
+            "wheel",
+            "gevent",
+            "eel",
+            "rlbot_gui",
+            "rlbot",
+        ]);
     } else {
         warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.");
     }
 
     info!("Starting GUI");
-    run_command(
-        rlbot_python.to_str().unwrap(),
-        &["-c", "from rlbot_gui import gui; gui.start()"],
-    )
-    .await?;
+    python_command!(&["-c", "from rlbot_gui import gui; gui.start()"]);
 
     Ok(())
 }
