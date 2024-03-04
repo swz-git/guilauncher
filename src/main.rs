@@ -150,8 +150,8 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
             "-m",
             "pip",
             "install",
-            "-U",
-            "uv",
+            "--force-reinstall",
+            "uv==0.1.13",
             "--no-warn-script-location",
         ]);
         // Install rlbot and deps with uv
