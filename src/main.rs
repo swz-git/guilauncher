@@ -19,7 +19,7 @@ use yansi::Paint;
 
 // from https://github.com/indygreg/python-build-standalone/releases/tag/20240224
 // originally .tar.gz, we use .tar.xz because of the better compression ratio
-const PYTHON311_ZIP_DATA: &[u8] = include_bytes!(
+const PYTHON311_COMPRESSED: &[u8] = include_bytes!(
     "../assets/cpython-3.11.8+20240224-x86_64-pc-windows-msvc-shared-install_only.tar.xz"
 );
 
@@ -54,8 +54,8 @@ struct Args {
 
 async fn realmain() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    let rlbot_banner = include_str!("../assets/rlbot-banner.txt");
-    println!("{}\n", rlbot_banner.green());
+    let rlbot_ascii_art = include_str!("../assets/rlbot-ascii-art.txt");
+    println!("{}\n", rlbot_ascii_art.green());
 
     info!("Checking for internet connection...");
 
@@ -115,12 +115,12 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        let decoder = XzDecoder::new(Cursor::new(PYTHON311_ZIP_DATA));
+        let decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
         let mut tar = tokio_tar::Archive::new(decoder);
 
         // tar.unpack(&python_install_dir).await?;
-        // the core above results in RLBotGUIX/Python311/python/[PYTHONFILES]
-        // because of this;
+        // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
+        // because of this, we do the following:
 
         let mut entries = tar.entries()?;
         while let Some(Ok(mut entry)) = entries.next().await {
