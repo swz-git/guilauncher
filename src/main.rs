@@ -130,6 +130,9 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     if python_dir.exists() && args.python_reinstall {
         info!("Removing current python install...");
         fs::remove_dir_all(&python_dir).await?
+    } else if python_dir.exists() && !crucial_python_components_installed {
+        info!("Broken python detected, reinstalling");
+        fs::remove_dir_all(&python_dir).await?
     }
 
     if !crucial_python_components_installed || args.python_reinstall {
