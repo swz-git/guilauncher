@@ -117,6 +117,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     // Clear python cache if told to do so
     if args.clear_pip_cache {
+        info!("Clearing package cache");
         clear_pip_cache(base_dirs).await?;
     }
 
