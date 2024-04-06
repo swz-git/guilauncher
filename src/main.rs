@@ -1,5 +1,6 @@
 mod self_updater;
 
+use async_compression::tokio::bufread::XzDecoder;
 use clap::Parser;
 use console::Term;
 use directories::BaseDirs;
@@ -8,16 +9,19 @@ use std::{
     env,
     error::Error,
     io::{stdout, Cursor, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::{fs, net::TcpStream, process::Command};
+use tokio::{fs, io::AsyncReadExt, net::TcpStream, process::Command};
+use tokio_stream::StreamExt;
 use tracing::{error, info, warn};
-use yansi::Paint;
+use zip::ZipArchive;
 
-// const PYTHON37_ZIP_URL: &str = "https://github.com/RLBot/RLBotGUI/raw/master/alternative-install/python-3.7.9-custom-amd64.zip";
-// const PYTHON311_ZIP_URL: &str = "https://github.com/RLBot/gui-installer/raw/master/RLBotGUIX%20Installer/python-3.11.6-custom-amd64.zip";
-const PYTHON311_ZIP_DATA: &[u8] = include_bytes!("../assets/python-3.11.6-custom-amd64.zip");
+// from https://github.com/indygreg/python-build-standalone/releases/tag/20240224
+// originally .tar.gz, we use .tar.xz because of the better compression ratio
+const PYTHON311_ZIP_DATA: &[u8] = include_bytes!(
+    "../assets/cpython-3.11.8+20240224-x86_64-pc-windows-msvc-shared-install_only.tar.xz"
+);
 
 async fn is_online() -> bool {
     TcpStream::connect("pypi.org:80").await.is_ok()
@@ -51,7 +55,13 @@ struct Args {
 async fn realmain() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let rlbot_banner = include_str!("../assets/rlbot-banner.txt");
-    println!("{}\n", rlbot_banner.green());
+    {
+        // Windows supports ansi colors after 16257
+        // TODO: enable them
+        let color_green = "\x1b[32m";
+        let color_reset = "\x1b[39m\x1b[49m";
+        println!("{color_green}{rlbot_banner}{color_reset}\n");
+    }
     info!("Checking for internet connection...");
 
     let is_online = is_online().await && !args.offline;
@@ -103,14 +113,29 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         .iter()
         .fold(true, |acc, path| path.exists() && acc);
 
-    if args.python_reinstall {
+    if crucial_python_components_installed && args.python_reinstall {
         info!("Removing current python install...");
-        fs::remove_dir_all(&python_install_dir).await?;
+        fs::remove_dir_all(&python_install_dir).await?
     }
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        zip_extract::extract(Cursor::new(PYTHON311_ZIP_DATA), &python_install_dir, true)?;
+        let mut decoder = XzDecoder::new(Cursor::new(PYTHON311_ZIP_DATA));
+        let mut tar = tokio_tar::Archive::new(decoder);
+
+        // tar.unpack(&python_install_dir).await?;
+        // the core above results in RLBotGUIX/Python311/python/[PYTHONFILES]
+        // because of this;
+
+        let mut entries = tar.entries()?;
+        while let Some(Ok(mut entry)) = entries.next().await {
+            let path_in_tar = entry.path()?;
+            // all paths start with `python/`, we wanna remove that
+            let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
+            entry
+                .unpack(python_install_dir.join(path_in_tar_without_parent))
+                .await?;
+        }
         info!("Python installed");
     } else {
         info!("Python install found, continuing");
