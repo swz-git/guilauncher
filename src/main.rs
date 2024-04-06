@@ -60,7 +60,7 @@ struct Args {
 
     /// Clears cache of pip (and uv)
     #[arg(short, long, default_value_t = false)]
-    pip_clear_cache: bool,
+    clear_pip_cache: bool,
 
     // Run as if offline
     #[arg(short, long, default_value_t = false)]
@@ -116,7 +116,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     let python_exe = python_dir.join("python.exe");
 
     // Clear python cache if told to do so
-    if args.pip_clear_cache {
+    if args.clear_pip_cache {
         clear_pip_cache(base_dirs).await?;
     }
 
