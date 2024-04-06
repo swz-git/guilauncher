@@ -35,6 +35,17 @@ fn pause() {
     term.read_key().expect("failed to read key");
 }
 
+async fn clear_pip_cache(base_dirs: BaseDirs) -> Result<(), Box<dyn Error>> {
+    let cache_dirs = [
+        base_dirs.data_local_dir().join("pip/cache"),
+        base_dirs.data_local_dir().join("uv/cache"),
+    ];
+    for dir in cache_dirs {
+        fs::remove_dir_all(&dir).await?;
+    }
+    Ok(())
+}
+
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -46,6 +57,10 @@ struct Args {
     /// Reinstall python
     #[arg(short, long, default_value_t = false)]
     python_reinstall: bool,
+
+    /// Clears cache of pip (and uv)
+    #[arg(short, long, default_value_t = false)]
+    pip_clear_cache: bool,
 
     // Run as if offline
     #[arg(short, long, default_value_t = false)]
@@ -96,21 +111,25 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         info!("Legacy python37 found");
     }
 
-    let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python311");
+    let python_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python311");
 
-    let rlbot_python = python_install_dir.join("python.exe");
+    let python_exe = python_dir.join("python.exe");
+
+    // Clear python cache if told to do so
+    if args.pip_clear_cache {
+        clear_pip_cache(base_dirs).await?;
+    }
 
     // Add paths that antiviruses may remove here
     // If any of these don't exist, we reinstall python
-    let crucial_python_components = [&rlbot_python];
-
+    let crucial_python_components = [&python_exe];
     let crucial_python_components_installed = crucial_python_components
         .iter()
         .fold(true, |acc, path| path.exists() && acc);
 
-    if crucial_python_components_installed && args.python_reinstall {
+    if python_dir.exists() && args.python_reinstall {
         info!("Removing current python install...");
-        fs::remove_dir_all(&python_install_dir).await?
+        fs::remove_dir_all(&python_dir).await?
     }
 
     if !crucial_python_components_installed || args.python_reinstall {
@@ -118,7 +137,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
         let decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
         let mut tar = tokio_tar::Archive::new(decoder);
 
-        // tar.unpack(&python_install_dir).await?;
+        // tar.unpack(&python_dir).await?;
         // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
         // because of this, we do the following:
 
@@ -128,7 +147,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
             // all paths start with `python/`, we wanna remove that
             let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
             entry
-                .unpack(python_install_dir.join(path_in_tar_without_parent))
+                .unpack(python_dir.join(path_in_tar_without_parent))
                 .await?;
         }
         info!("Python installed");
@@ -138,13 +157,13 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     macro_rules! python_command {
         ($args:expr) => {{
-            let exit_status = Command::new(rlbot_python.to_str().unwrap())
+            let exit_status = Command::new(python_exe.to_str().unwrap())
                 .args($args)
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .current_dir(env::temp_dir())
                 // The below is needed because uv refuses to run without it
-                .env("VIRTUAL_ENV", python_install_dir.to_str().unwrap())
+                .env("VIRTUAL_ENV", python_dir.to_str().unwrap())
                 .status()
                 .await?;
             if !exit_status.success() {
