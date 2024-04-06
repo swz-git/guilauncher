@@ -12,10 +12,9 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::{fs, io::AsyncReadExt, net::TcpStream, process::Command};
+use tokio::{fs, net::TcpStream, process::Command};
 use tokio_stream::StreamExt;
 use tracing::{error, info, warn};
-use zip::ZipArchive;
 
 // from https://github.com/indygreg/python-build-standalone/releases/tag/20240224
 // originally .tar.gz, we use .tar.xz because of the better compression ratio
@@ -120,7 +119,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        let mut decoder = XzDecoder::new(Cursor::new(PYTHON311_ZIP_DATA));
+        let decoder = XzDecoder::new(Cursor::new(PYTHON311_ZIP_DATA));
         let mut tar = tokio_tar::Archive::new(decoder);
 
         // tar.unpack(&python_install_dir).await?;
