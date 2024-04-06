@@ -69,7 +69,6 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     info!("Is online: {is_online}");
 
     // Check for self update
-    // TODO: add clap flag for forced self-update
     if is_online {
         info!("Checking for self-updates...");
         let self_updated = match check_self_update(args.force_self_update).await {
@@ -105,9 +104,10 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     let python_install_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX/Python311");
 
     let rlbot_python = python_install_dir.join("python.exe");
-    let rlbot_pip = python_install_dir.join("Scripts/pip.exe");
 
-    let crucial_python_components = [&rlbot_python, &rlbot_pip];
+    // Add paths that antiviruses may remove here
+    // If any of these don't exist, we reinstall python
+    let crucial_python_components = [&rlbot_python];
 
     let crucial_python_components_installed = crucial_python_components
         .iter()
@@ -175,7 +175,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
             "-m",
             "pip",
             "install",
-            "uv==0.1.26",
+            "uv==0.1.29",
             "--no-warn-script-location",
         ]);
         // Install rlbot and deps with uv
