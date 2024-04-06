@@ -15,6 +15,7 @@ use std::{
 use tokio::{fs, net::TcpStream, process::Command};
 use tokio_stream::StreamExt;
 use tracing::{error, info, warn};
+use yansi::Paint;
 
 // from https://github.com/indygreg/python-build-standalone/releases/tag/20240224
 // originally .tar.gz, we use .tar.xz because of the better compression ratio
@@ -54,13 +55,8 @@ struct Args {
 async fn realmain() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let rlbot_banner = include_str!("../assets/rlbot-banner.txt");
-    {
-        // Windows supports ansi colors after 16257
-        // TODO: enable them
-        let color_green = "\x1b[32m";
-        let color_reset = "\x1b[39m\x1b[49m";
-        println!("{color_green}{rlbot_banner}{color_reset}\n");
-    }
+    println!("{}\n", rlbot_banner.green());
+
     info!("Checking for internet connection...");
 
     let is_online = is_online().await && !args.offline;
