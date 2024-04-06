@@ -67,7 +67,7 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(new_binary) = maybe_new_binary {
-        info!("Updating self");
+        info!("Updating self, PLEASE DO NOT CLOSE THIS WINDOW");
         let temp_bin = Path::join(env::temp_dir().as_path(), "TEMPrlbotguilauncher.exe");
         fs::write(&temp_bin, new_binary).await?;
         self_replace::self_replace(&temp_bin)?;
