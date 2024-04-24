@@ -8,11 +8,13 @@ use self_updater::check_self_update;
 use std::{
     env,
     error::Error,
+    fs,
     io::{stdout, Cursor, Write},
+    net::TcpStream,
     path::{Path, PathBuf},
+    process::Command,
     process::Stdio,
 };
-use tokio::{fs, net::TcpStream, process::Command};
 use tokio_stream::StreamExt;
 use tracing::{error, info, warn};
 use yansi::Paint;
@@ -23,8 +25,8 @@ const PYTHON311_COMPRESSED: &[u8] = include_bytes!(
     "../assets/cpython-3.11.8+20240224-x86_64-pc-windows-msvc-shared-install_only.tar.xz"
 );
 
-async fn is_online() -> bool {
-    TcpStream::connect("pypi.org:80").await.is_ok()
+fn is_online() -> bool {
+    TcpStream::connect("pypi.org:80").is_ok()
 }
 
 fn pause() {
@@ -35,13 +37,13 @@ fn pause() {
     term.read_key().expect("failed to read key");
 }
 
-async fn clear_pip_cache(base_dirs: BaseDirs) -> Result<(), Box<dyn Error>> {
+fn clear_pip_cache(base_dirs: BaseDirs) -> Result<(), Box<dyn Error>> {
     let cache_dirs = [
         base_dirs.data_local_dir().join("pip/cache"),
         base_dirs.data_local_dir().join("uv/cache"),
     ];
     for dir in cache_dirs {
-        fs::remove_dir_all(&dir).await?;
+        fs::remove_dir_all(&dir)?;
     }
     Ok(())
 }
@@ -67,21 +69,21 @@ struct Args {
     offline: bool,
 }
 
-async fn realmain() -> Result<(), Box<dyn Error>> {
+fn realmain() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let rlbot_ascii_art = include_str!("../assets/rlbot-ascii-art.txt");
     println!("{}\n", rlbot_ascii_art.green());
 
     info!("Checking for internet connection...");
 
-    let is_online = is_online().await && !args.offline;
+    let is_online = is_online() && !args.offline;
 
     info!("Is online: {is_online}");
 
     // Check for self update
     if is_online {
         info!("Checking for self-updates...");
-        let self_updated = match check_self_update(args.force_self_update).await {
+        let self_updated = match check_self_update(args.force_self_update) {
             Ok(self_updated) => self_updated,
             Err(e) => {
                 error!("{}", e.to_string());
@@ -102,7 +104,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // Check for RLBotGUIX path
     let rlbotgui_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX");
     if !rlbotgui_dir.exists() {
-        fs::create_dir_all(rlbotgui_dir).await?;
+        fs::create_dir_all(rlbotgui_dir)?;
     }
 
     // Check for python install
@@ -118,7 +120,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
     // Clear python cache if told to do so
     if args.clear_pip_cache {
         info!("Clearing package cache");
-        clear_pip_cache(base_dirs).await?;
+        clear_pip_cache(base_dirs)?;
     }
 
     // Add paths that antiviruses may remove here
@@ -130,30 +132,38 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 
     if python_dir.exists() && args.python_reinstall {
         info!("Removing current python install...");
-        fs::remove_dir_all(&python_dir).await?
+        fs::remove_dir_all(&python_dir)?
     } else if python_dir.exists() && !crucial_python_components_installed {
         info!("Broken python detected, reinstalling");
-        fs::remove_dir_all(&python_dir).await?
+        fs::remove_dir_all(&python_dir)?
     }
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        let decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
-        let mut tar = tokio_tar::Archive::new(decoder);
 
-        // tar.unpack(&python_dir).await?;
-        // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
-        // because of this, we do the following:
+        let rt = tokio::runtime::Runtime::new()?;
+        // async_compression needs async, so use smol
+        rt.block_on(async {
+            let decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
+            let mut tar = tokio_tar::Archive::new(decoder);
 
-        let mut entries = tar.entries()?;
-        while let Some(Ok(mut entry)) = entries.next().await {
-            let path_in_tar = entry.path()?;
-            // all paths start with `python/`, we wanna remove that
-            let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
-            entry
-                .unpack(python_dir.join(path_in_tar_without_parent))
-                .await?;
-        }
+            // tar.unpack(&python_dir).await?;
+            // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
+            // because of this, we do the following:
+
+            let mut entries = tar.entries()?;
+            while let Some(Ok(mut entry)) = entries.next().await {
+                let path_in_tar = entry.path()?;
+                // all paths start with `python/`, we wanna remove that
+                let path_in_tar_without_parent: PathBuf =
+                    path_in_tar.components().skip(1).collect();
+                entry
+                    .unpack(python_dir.join(path_in_tar_without_parent))
+                    .await?;
+            }
+            Ok::<(), Box<dyn Error>>(())
+        })?;
+
         info!("Python installed");
     } else {
         info!("Python install found, continuing");
@@ -168,8 +178,7 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
                 .current_dir(env::temp_dir())
                 // The below is needed because uv refuses to run without it
                 .env("VIRTUAL_ENV", python_dir.to_str().unwrap())
-                .status()
-                .await?;
+                .status()?;
             if !exit_status.success() {
                 Err("Command failed")?
             }
@@ -223,11 +232,10 @@ async fn realmain() -> Result<(), Box<dyn Error>> {
 #[cfg(not(windows))]
 compile_error!("Only windows is supported");
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::fmt::init();
 
-    if let Err(e) = realmain().await {
+    if let Err(e) = realmain() {
         error!("{}", e.to_string());
         info!("If you need help, join our discord! https://rlbot.org/discord/");
         pause();

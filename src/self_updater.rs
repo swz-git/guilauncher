@@ -5,9 +5,8 @@ use std::{
     path::Path,
 };
 
-use reqwest::header::USER_AGENT;
 use serde::Deserialize;
-use tokio::fs;
+use std::fs;
 use tracing::{info, warn};
 
 use crate::pause;
@@ -31,7 +30,7 @@ struct Release {
     assets: Vec<Asset>,
 }
 
-async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
+fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
     let zip_asset = new_release
         .assets
         .iter()
@@ -45,10 +44,11 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
 
     info!("Downloading latest release zip");
 
-    let zip_bytes = reqwest::get(zip_asset.browser_download_url.to_string())
-        .await?
-        .bytes()
-        .await?;
+    let mut zip_bytes = vec![];
+    ureq::get(&zip_asset.browser_download_url)
+        .call()?
+        .into_reader()
+        .read_to_end(&mut zip_bytes)?;
 
     info!("Extracting executable");
     let mut zip = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
@@ -69,9 +69,9 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
     if let Some(new_binary) = maybe_new_binary {
         info!("Updating self, PLEASE DO NOT CLOSE THIS WINDOW");
         let temp_bin = Path::join(env::temp_dir().as_path(), "TEMPrlbotguilauncher.exe");
-        fs::write(&temp_bin, new_binary).await?;
+        fs::write(&temp_bin, new_binary)?;
         self_replace::self_replace(&temp_bin)?;
-        fs::remove_file(temp_bin).await?;
+        fs::remove_file(temp_bin)?;
         info!("Done! Please restart this program.");
         pause();
     } else {
@@ -81,22 +81,19 @@ async fn self_update(new_release: &Release) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error>> {
+pub fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error>> {
     let latest_release_url = format!(
         "https://api.github.com/repos/{RELEASE_REPO_OWNER}/{RELEASE_REPO_NAME}/releases/latest"
     );
-    let reqwest_client = reqwest::Client::new();
-    let Ok(req) = reqwest_client
-        .get(latest_release_url)
-        .header(USER_AGENT, "rlbot-gui-launcher")
-        .send()
-        .await
+    let Ok(req) = ureq::get(&latest_release_url)
+        .set("User-Agent", "rlbot-gui-launcher")
+        .call()
     else {
         warn!("Couldn't find latest release, self-updating is not available");
         return Ok(false);
     };
 
-    let req_text = &req.text().await?;
+    let req_text = &req.into_string()?;
 
     let Ok(latest_release) = serde_json::from_str::<Release>(req_text) else {
         warn!("Couldn't parse latest release, self-updating is not available");
@@ -108,11 +105,11 @@ pub async fn check_self_update(force_update: bool) -> Result<bool, Box<dyn Error
 
     if current_version_name != latest_version_name {
         info!("Update found, self-updating...");
-        self_update(&latest_release).await?;
+        self_update(&latest_release)?;
         return Ok(true);
     } else if force_update {
         info!("Forcing self-update...");
-        self_update(&latest_release).await?;
+        self_update(&latest_release)?;
         return Ok(true);
     }
 
