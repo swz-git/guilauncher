@@ -17,11 +17,10 @@ use tokio_stream::StreamExt;
 use tracing::{error, info, warn};
 use yansi::Paint;
 
-// from https://github.com/indygreg/python-build-standalone/releases/tag/20240224
-// originally .tar.gz, we use .tar.xz because of the better compression ratio
-const PYTHON311_COMPRESSED: &[u8] = include_bytes!(
-    "../assets/cpython-3.11.8+20240224-x86_64-pc-windows-msvc-shared-install_only.tar.xz"
-);
+// from https://github.com/indygreg/python-build-standalone/releases/tag/20240415
+// originally cpython-3.11.9+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
+// decompressed, pdb files removed, recompressed as xz
+const PYTHON311_COMPRESSED: &[u8] = include_bytes!("../assets/cpython-3.11.9-custom-rlbot.tar.xz");
 
 async fn is_online() -> bool {
     TcpStream::connect("pypi.org:80").await.is_ok()
