@@ -205,7 +205,8 @@ fn realmain() -> Result<(), Box<dyn Error>> {
             "eel",
             "rlbot_gui",
             "rlbot",
-            "numpy==1.*" // numpy is an indirect dependency and 2.* breaks a lot of things
+            "numpy==1.*", // numpy is an indirect dependency and 2.* breaks a lot of things
+            "websockets==12"  // websockets 14 breaks rlbot "no running event loop"
         ]);
     } else {
         warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.");
