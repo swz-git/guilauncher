@@ -29,6 +29,7 @@ ureq = "2.10.1"
 xz = "0.1.0"
 tar = "0.4.43"
 anyhow = "1.0.93"
+indicatif = "0.17.8"
 
 [build-dependencies]
 embed-resource = "2.4.0"

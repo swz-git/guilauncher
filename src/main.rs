@@ -1,14 +1,14 @@
 mod self_updater;
 
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use console::Term;
 use directories::BaseDirs;
+use indicatif::{ProgressBar, ProgressStyle};
 use self_updater::check_self_update;
 use std::{
-    env,
-    error::Error,
-    fs,
-    io::{stdout, Cursor, Write},
+    env, fs,
+    io::{stdout, Cursor, Read, Seek, SeekFrom, Write},
     net::TcpStream,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -21,29 +21,6 @@ use yansi::Paint;
 // originally cpython-3.11.9+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
 // decompressed, pdb files removed, recompressed as xz
 const PYTHON311_COMPRESSED: &[u8] = include_bytes!("../assets/cpython-3.11.9-custom-rlbot.tar.xz");
-
-fn is_online() -> bool {
-    TcpStream::connect("pypi.org:80").is_ok()
-}
-
-fn pause() {
-    print!("Press any key to exit... ");
-    stdout().flush().expect("couldn't flush stdout");
-
-    let term = Term::stdout();
-    term.read_key().expect("failed to read key");
-}
-
-fn clear_pip_cache(base_dirs: BaseDirs) -> Result<(), Box<dyn Error>> {
-    let cache_dirs = [
-        base_dirs.data_local_dir().join("pip/cache"),
-        base_dirs.data_local_dir().join("uv/cache"),
-    ];
-    for dir in cache_dirs {
-        fs::remove_dir_all(&dir)?;
-    }
-    Ok(())
-}
 
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
@@ -66,7 +43,7 @@ struct Args {
     offline: bool,
 }
 
-fn realmain() -> Result<(), Box<dyn Error>> {
+fn realmain() -> anyhow::Result<()> {
     let args = Args::parse();
     let rlbot_ascii_art = include_str!("../assets/rlbot-ascii-art.txt");
     println!("{}\n", rlbot_ascii_art.green());
@@ -96,7 +73,7 @@ fn realmain() -> Result<(), Box<dyn Error>> {
         warn!("Not checking for updates because no internet connection was found");
     }
 
-    let base_dirs = BaseDirs::new().ok_or("Couldn't get BaseDirs")?;
+    let base_dirs = BaseDirs::new().ok_or(anyhow!("Couldn't get BaseDirs"))?;
 
     // Check for RLBotGUIX path
     let rlbotgui_dir = Path::join(base_dirs.data_local_dir(), "RLBotGUIX");
@@ -117,7 +94,7 @@ fn realmain() -> Result<(), Box<dyn Error>> {
     // Clear python cache if told to do so
     if args.clear_pip_cache {
         info!("Clearing package cache");
-        clear_pip_cache(base_dirs)?;
+        clear_pip_cache(base_dirs).context("Couldn't clear pip cache")?;
     }
 
     // Add paths that antiviruses may remove here
@@ -137,20 +114,7 @@ fn realmain() -> Result<(), Box<dyn Error>> {
 
     if !crucial_python_components_installed || args.python_reinstall {
         info!("Python not found, installing...");
-        let decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
-        let mut tar_archive = tar::Archive::new(decoder);
-
-        // tar.unpack(&python_dir).await?;
-        // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
-        // because of this, we do the following:
-
-        let mut entries = tar_archive.entries()?;
-        while let Some(Ok(mut entry)) = entries.next() {
-            let path_in_tar = entry.path()?;
-            // all paths start with `python/`, we wanna remove that
-            let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
-            entry.unpack(python_dir.join(path_in_tar_without_parent))?;
-        }
+        install_python(&python_dir).context("Python install failed")?;
         info!("Python installed");
     } else {
         info!("Python install found, continuing");
@@ -167,7 +131,7 @@ fn realmain() -> Result<(), Box<dyn Error>> {
                 .env("VIRTUAL_ENV", python_dir.to_str().unwrap())
                 .status()?;
             if !exit_status.success() {
-                Err("Command failed")?
+                Err(anyhow!("Command failed"))?
             }
         }};
     }
@@ -215,6 +179,72 @@ fn realmain() -> Result<(), Box<dyn Error>> {
     info!("Starting GUI");
     python_command!(&["-c", "from rlbot_gui import gui; gui.start()"]);
 
+    Ok(())
+}
+
+fn is_online() -> bool {
+    TcpStream::connect("pypi.org:80").is_ok()
+}
+
+fn pause() {
+    print!("Press any key to exit... ");
+    stdout().flush().expect("couldn't flush stdout");
+
+    let term = Term::stdout();
+    term.read_key().expect("failed to read key");
+}
+
+fn clear_pip_cache(base_dirs: BaseDirs) -> anyhow::Result<()> {
+    let cache_dirs = [
+        base_dirs.data_local_dir().join("pip/cache"),
+        base_dirs.data_local_dir().join("uv/cache"),
+    ];
+    for dir in cache_dirs {
+        fs::remove_dir_all(&dir)?;
+    }
+    Ok(())
+}
+
+fn install_python(dir: &Path) -> anyhow::Result<()> {
+    let mut decoder = XzDecoder::new(Cursor::new(PYTHON311_COMPRESSED));
+    let decoded = {
+        let mut buf = Vec::new();
+        decoder
+            .read_to_end(&mut buf)
+            .context("XzDecoder read failed")?;
+        buf
+    };
+    let mut tar_archive = tar::Archive::new(Cursor::new(decoded));
+
+    let pb = ProgressBar::new(tar_archive.entries_with_seek()?.count() as u64);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.green} {elapsed_precise} [{bar:15.cyan/blue}] {pos}/{len} ~{eta} left",
+        )
+        .unwrap()
+        .tick_chars("-\\|/✓"),
+    );
+
+    // recreate archive
+    let mut tar_archive = tar::Archive::new({
+        let mut cursor = tar_archive.into_inner();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        cursor
+    });
+
+    // tar.unpack(&python_dir).await?;
+    // the code above results in RLBotGUIX/Python311/python/[PYTHONFILES]
+    // because of this, we do the following:
+
+    let mut entries = tar_archive.entries()?;
+    while let Some(Ok(mut entry)) = entries.next() {
+        let path_in_tar = entry.path()?;
+        // all paths start with `python/`, we wanna remove that
+        let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
+        entry.unpack(dir.join(path_in_tar_without_parent))?;
+        pb.set_position(pb.position() + 1);
+    }
+    pb.finish_with_message("done");
     Ok(())
 }
 
