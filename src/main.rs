@@ -167,7 +167,7 @@ fn realmain() -> anyhow::Result<()> {
             "wheel",
             "gevent",
             "eel",
-            "rlbot_gui@https://github.com/RLBot/RLBotGUI/releases/download/wheel-builds/rlbot_gui-0.0.157-py3-none-any.whl",
+            "rlbot_gui",
             "rlbot",
             "numpy==1.*", // numpy is an indirect dependency and 2.* breaks a lot of things
             "websockets==12"  // websockets 14 breaks rlbot "no running event loop"
