@@ -168,8 +168,8 @@ fn realmain() -> anyhow::Result<()> {
             "gevent",
             "eel",
             "rlbot_gui",
-            "rlbot",
-            "numpy==1.*", // numpy is an indirect dependency and 2.* breaks a lot of things
+            "rlbot==1.*",     // make sure rlbot v4 doesn't break when v5 releases
+            "numpy==1.*",     // numpy is an indirect dependency and 2.* breaks a lot of things
             "websockets==12"  // websockets 14 breaks rlbot "no running event loop"
         ]);
     } else {
