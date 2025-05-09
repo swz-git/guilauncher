@@ -17,10 +17,10 @@ use tracing::{error, info, warn};
 use xz::bufread::XzDecoder;
 use yansi::Paint;
 
-// from https://github.com/indygreg/python-build-standalone/releases/tag/20240415
-// originally cpython-3.11.9+20240415-x86_64-pc-windows-msvc-install_only.tar.gz
-// decompressed, pdb files removed, recompressed as xz
-const PYTHON311_COMPRESSED: &[u8] = include_bytes!("../assets/cpython-3.11.9-custom-rlbot.tar.xz");
+// from https://github.com/indygreg/python-build-standalone/releases/
+const PYTHON311_COMPRESSED: &[u8] = include_bytes!(
+    "../assets/cpython-3.11.12+20250409-x86_64-pc-windows-msvc-install_only_stripped.tar.xz"
+);
 
 /// Launcher for RLBotGUI
 #[derive(Parser, Debug)]
