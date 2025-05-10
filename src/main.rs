@@ -9,9 +9,10 @@ use self_updater::check_self_update;
 use std::{
     env, fs,
     io::{stdout, Cursor, Read, Seek, SeekFrom, Write},
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    str::FromStr,
     time::Duration,
 };
 use tracing::{error, info, warn};
@@ -184,7 +185,11 @@ fn realmain() -> anyhow::Result<()> {
 }
 
 fn is_online() -> bool {
-    TcpStream::connect_timeout("pypi.org:80", Duration::from_secs(5)).is_ok()
+    TcpStream::connect_timeout(
+        &SocketAddr::from_str("pypi.org:80").unwrap(),
+        Duration::from_secs(5),
+    )
+    .is_ok()
 }
 
 fn pause() {

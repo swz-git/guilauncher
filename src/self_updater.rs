@@ -46,7 +46,10 @@ fn self_update(new_release: &Release) -> anyhow::Result<()> {
     let response = ureq::get(&zip_asset.browser_download_url).call()?;
 
     let mut zip_bytes = Vec::new();
-    response.into_reader().read_to_end(&mut zip_bytes)?;
+    response
+        .into_body()
+        .into_reader()
+        .read_to_end(&mut zip_bytes)?;
 
     info!("Extracting executable");
     let mut zip = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
@@ -84,14 +87,14 @@ pub fn check_self_update(force_update: bool) -> anyhow::Result<bool> {
         "https://api.github.com/repos/{RELEASE_REPO_OWNER}/{RELEASE_REPO_NAME}/releases/latest"
     );
     let Ok(req) = ureq::get(&latest_release_url)
-        .set("User-Agent", "rlbot-gui-launcher")
+        .header("User-Agent", "rlbot-gui-launcher")
         .call()
     else {
         warn!("Couldn't find latest release, self-updating is not available");
         return Ok(false);
     };
 
-    let req_text = &req.into_string()?;
+    let req_text = &req.into_body().read_to_string()?;
 
     let Ok(latest_release) = serde_json::from_str::<Release>(req_text) else {
         warn!("Couldn't parse latest release, self-updating is not available");
