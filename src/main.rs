@@ -12,6 +12,7 @@ use std::{
     net::TcpStream,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::Duration,
 };
 use tracing::{error, info, warn};
 use xz::bufread::XzDecoder;
@@ -50,7 +51,7 @@ fn realmain() -> anyhow::Result<()> {
 
     info!("Checking for internet connection...");
 
-    let is_online = is_online() && !args.offline;
+    let is_online = !args.offline && is_online();
 
     info!("Is online: {is_online}");
 
@@ -183,7 +184,7 @@ fn realmain() -> anyhow::Result<()> {
 }
 
 fn is_online() -> bool {
-    TcpStream::connect("pypi.org:80").is_ok()
+    TcpStream::connect_timeout("pypi.org:80", Duration::from_secs(5)).is_ok()
 }
 
 fn pause() {
