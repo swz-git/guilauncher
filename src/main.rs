@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 use tracing::{error, info, warn};
-use xz::bufread::XzDecoder;
+use xz2::bufread::XzDecoder;
 use yansi::Paint;
 
 // from https://github.com/indygreg/python-build-standalone/releases/
@@ -251,7 +251,10 @@ fn install_python(dir: &Path) -> anyhow::Result<()> {
         let path_in_tar = entry.path()?;
         // all paths start with `python/`, we wanna remove that
         let path_in_tar_without_parent: PathBuf = path_in_tar.components().skip(1).collect();
-        entry.unpack(dir.join(path_in_tar_without_parent))?;
+        let unpack_path = dir.join(path_in_tar_without_parent);
+        fs::create_dir_all(unpack_path.parent().context("failed to get parent")?)
+            .context("failed to create parent dir")?;
+        entry.unpack(unpack_path)?;
         pb.set_position(pb.position() + 1);
     }
     pb.finish_with_message("done");
@@ -265,7 +268,7 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     if let Err(e) = realmain() {
-        error!("{}", e.to_string());
+        error!("{e:?}");
         info!("If you need help, join our discord! https://rlbot.org/discord/");
         pause();
     }
