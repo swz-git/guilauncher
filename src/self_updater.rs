@@ -37,7 +37,7 @@ fn self_update(new_release: &Release) -> anyhow::Result<()> {
             r.name.contains("guilauncher")
                 && Path::new(&r.name)
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("zip"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
         })
         .context("Couldn't find binary of latest release")?;
 

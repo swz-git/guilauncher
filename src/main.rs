@@ -9,10 +9,9 @@ use self_updater::check_self_update;
 use std::{
     env, fs,
     io::{stdout, Cursor, Read, Seek, SeekFrom, Write},
-    net::{SocketAddr, TcpStream},
+    net::{TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    str::FromStr,
     time::Duration,
 };
 use tracing::{error, info, warn};
@@ -170,9 +169,10 @@ fn realmain() -> anyhow::Result<()> {
             "gevent",
             "eel",
             "rlbot_gui",
-            "rlbot==1.*",     // make sure rlbot v4 doesn't break when v5 releases
-            "numpy==1.*",     // numpy is an indirect dependency and 2.* breaks a lot of things
-            "websockets==12"  // websockets 14 breaks rlbot "no running event loop"
+            "rlbot==1.*",       // make sure rlbot v4 doesn't break when v5 releases
+            "numpy==1.*",       // numpy is an indirect dependency and 2.* breaks a lot of things
+            "websockets==12",   // websockets 14 breaks rlbot "no running event loop"
+            "setuptools==80.*", // fix "No module named 'pkg_resources'"
         ]);
     } else {
         warn!("It seems you're offline, skipping updates. If this is the first time you're running rlbot, you need to connect to the internet.");
@@ -186,7 +186,11 @@ fn realmain() -> anyhow::Result<()> {
 
 fn is_online() -> bool {
     TcpStream::connect_timeout(
-        &SocketAddr::from_str("pypi.org:80").unwrap(),
+        &"pypi.org:80"
+            .to_socket_addrs()
+            .expect("failed to resolve domain")
+            .next()
+            .expect("no address found for domain"),
         Duration::from_secs(5),
     )
     .is_ok()
